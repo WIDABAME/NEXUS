@@ -1,11 +1,16 @@
+# myapp
 
-  # Idea Organizer App
+A new Flutter project.
 
-  This is a code bundle for Idea Organizer App. The original project is available at https://www.figma.com/design/9Lro5KuLf916HrIlV10VZv/Idea-Organizer-App.
+## Getting Started
 
-  ## Running the code
+This project is a starting point for a Flutter application.
 
-  Run `npm i` to install the dependencies.
+A few resources to get you started if this is your first Flutter project:
 
-  Run `npm run dev` to start the development server.
-  
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
