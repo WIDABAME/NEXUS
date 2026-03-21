@@ -33,16 +33,17 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     super.dispose();
   }
 
-  void _saveNote() {
+  void _saveNoteAndExit() {
     final nexusData = Provider.of<NexusData>(context, listen: false);
     final title = _titleController.text;
     final content = _contentController.text;
 
     if (title.isEmpty && content.isEmpty) {
       // No guardar notas vacías
-      if(widget.note != null){
+      if (widget.note != null) {
         nexusData.removeNote(widget.note!.id);
       }
+      Navigator.pop(context);
       return;
     }
 
@@ -65,69 +66,63 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       );
       nexusData.addNote(newNote);
     }
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        _saveNote();
-        return true;
-      },
-      child: Scaffold(
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFFFBFBFF),
-                const Color(0xFFF4F3FF).withOpacity(0.8),
-              ],
-            ),
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFFBFBFF),
+              const Color(0xFFF4F3FF).withOpacity(0.8),
+            ],
           ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                _buildCustomAppBar(context),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-                    child: ListView(
-                      children: [
-                        TextField(
-                          controller: _titleController,
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'Título',
-                          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildCustomAppBar(context),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                  child: ListView(
+                    children: [
+                      TextField(
+                        controller: _titleController,
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Título',
                         ),
-                        const SizedBox(height: 24),
-                        TextField(
-                          controller: _contentController,
-                           autofocus: widget.note == null, // Autofocus si es una nota nueva
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.5),
-                          maxLines: null, // Permite múltiples líneas
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'Empieza a escribir...',
-                          ),
+                      ),
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: _contentController,
+                        autofocus: widget.note == null, // Autofocus si es una nota nueva
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.5),
+                        maxLines: null, // Permite múltiples líneas
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Empieza a escribir...',
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-}
 
-Widget _buildCustomAppBar(BuildContext context) {
+  Widget _buildCustomAppBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
@@ -137,21 +132,23 @@ Widget _buildCustomAppBar(BuildContext context) {
             onTap: () => Navigator.of(context).pop(),
             borderRadius: BorderRadius.circular(12),
             child: Container(
-               padding: const EdgeInsets.all(10),
-               decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.8),
-               ),
-               child: const Icon(Icons.arrow_back, color: Color(0xFF333333)),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.8),
+              ),
+              child: const Icon(Icons.arrow_back, color: Color(0xFF333333)),
             ),
           ),
           const Spacer(),
-           // Botones de acción
-          _buildGradientIconButton(icon: Icons.graphic_eq, onPressed: () {}),
-          const SizedBox(width: 8),
+          // Botones de acción
           _buildGradientIconButton(icon: Icons.share_outlined, onPressed: () {}),
           const SizedBox(width: 8),
-          _buildGradientIconButton(icon: Icons.more_horiz, onPressed: () {}, isLast: true),
+          _buildGradientIconButton(
+            icon: Icons.save,
+            onPressed: _saveNoteAndExit,
+            isLast: true,
+          ),
         ],
       ),
     );
@@ -172,12 +169,13 @@ Widget _buildCustomAppBar(BuildContext context) {
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
-        ]
+        ],
       ),
       child: IconButton(
         onPressed: onPressed,
         icon: Icon(icon, color: Colors.white, size: 20),
-        tooltip: 'Acción',
+        tooltip: 'Guardar',
       ),
     );
   }
+}

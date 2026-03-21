@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -26,18 +25,18 @@ class Note {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'content': content,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'id': id,
+    'title': title,
+    'content': content,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory Note.fromJson(Map<String, dynamic> json) => Note(
-        id: json['id'],
-        title: json['title'],
-        content: json['content'],
-        createdAt: DateTime.parse(json['createdAt']),
-      );
+    id: json['id'],
+    title: json['title'],
+    content: json['content'],
+    createdAt: DateTime.parse(json['createdAt']),
+  );
 }
 
 // --- 2. GESTOR DE ESTADO ---
@@ -54,13 +53,19 @@ class NexusData extends ChangeNotifier {
     if (_searchQuery.isEmpty) {
       return List<Note>.unmodifiable(_notes);
     }
-    return List<Note>.unmodifiable(_notes.where((note) {
-      final titleMatch = note.title.toLowerCase().contains(_searchQuery.toLowerCase());
-      final contentMatch = note.content.toLowerCase().contains(_searchQuery.toLowerCase());
-      return titleMatch || contentMatch;
-    }));
+    return List<Note>.unmodifiable(
+      _notes.where((note) {
+        final titleMatch = note.title.toLowerCase().contains(
+          _searchQuery.toLowerCase(),
+        );
+        final contentMatch = note.content.toLowerCase().contains(
+          _searchQuery.toLowerCase(),
+        );
+        return titleMatch || contentMatch;
+      }),
+    );
   }
-  
+
   String get searchQuery => _searchQuery;
 
   void updateSearchQuery(String query) {
@@ -81,7 +86,9 @@ class NexusData extends ChangeNotifier {
 
   Future<void> _saveNotes() async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedList = jsonEncode(_notes.map((note) => note.toJson()).toList());
+    final String encodedList = jsonEncode(
+      _notes.map((note) => note.toJson()).toList(),
+    );
     await prefs.setString('nexus_notes', encodedList);
   }
 
@@ -182,18 +189,21 @@ class NexusHomePage extends StatelessWidget {
               _buildHeader(context),
               Expanded(
                 child: filteredNotes.isEmpty
-                    ? _buildEmptyState(context, isSearching: nexusData.searchQuery.isNotEmpty)
+                    ? _buildEmptyState(
+                        context,
+                        isSearching: nexusData.searchQuery.isNotEmpty,
+                      )
                     : _buildNotesGrid(context, filteredNotes),
               ),
             ],
           ),
         ),
       ),
-       floatingActionButton: _buildGradientFab(context),
+      floatingActionButton: _buildGradientFab(context),
     );
   }
 
-   Widget _buildCustomAppBar(BuildContext context) {
+  Widget _buildCustomAppBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
@@ -206,11 +216,23 @@ class NexusHomePage extends StatelessWidget {
               color: Color(0xFF7B61FF),
             ),
             child: const Center(
-              child: Text('N', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              child: Text(
+                'N',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 8),
-          Text('Nexus', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            'Nexus',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
           const Spacer(),
           _buildGradientButton(
             onPressed: () {},
@@ -221,23 +243,33 @@ class NexusHomePage extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildHeader(BuildContext context) {
-     final nexusData = Provider.of<NexusData>(context, listen: false);
+    final nexusData = Provider.of<NexusData>(context, listen: false);
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Notas Recientes', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            'Notas Recientes',
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.8),
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                ),
+              ],
             ),
             child: TextField(
               onChanged: (value) => nexusData.updateSearchQuery(value),
@@ -254,7 +286,7 @@ class NexusHomePage extends StatelessWidget {
   }
 
   Widget _buildEmptyState(BuildContext context, {bool isSearching = false}) {
-     return Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -263,16 +295,32 @@ class NexusHomePage extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.8),
               shape: BoxShape.circle,
-               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                ),
+              ],
             ),
-            child: Icon(isSearching ? Icons.search_off : Icons.add, size: 40, color: const Color(0xFF7B61FF)),
+            child: Icon(
+              isSearching ? Icons.search_off : Icons.add,
+              size: 40,
+              color: const Color(0xFF7B61FF),
+            ),
           ),
           const SizedBox(height: 24),
-          Text(isSearching ? 'No se encontraron notas' : 'Aún no tienes notas', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            isSearching ? 'No se encontraron notas' : 'Aún no tienes notas',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 8),
           Text(
-            isSearching ? 'Intenta con otra búsqueda' : 'Presiona el botón + para empezar',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+            isSearching
+                ? 'Intenta con otra búsqueda'
+                : 'Presiona el botón + para empezar',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
           ),
         ],
       ),
@@ -291,17 +339,25 @@ class NexusHomePage extends StatelessWidget {
       itemCount: notes.length,
       itemBuilder: (context, index) {
         final note = notes[index];
-        return NoteCard(note: note, onTap: () => _navigateToEditor(context, note: note));
+        return NoteCard(
+          note: note,
+          onTap: () => _navigateToEditor(context, note: note),
+        );
       },
     );
   }
 
-  Widget _buildGradientButton({required VoidCallback onPressed, required Widget child, EdgeInsets? padding}) {
-     return InkWell(
+  Widget _buildGradientButton({
+    required VoidCallback onPressed,
+    required Widget child,
+    EdgeInsets? padding,
+  }) {
+    return InkWell(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding:
+            padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: const LinearGradient(
@@ -309,7 +365,13 @@ class NexusHomePage extends StatelessWidget {
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
-          boxShadow: [BoxShadow(color: const Color(0xFF7B61FF).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))]
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF7B61FF).withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
         child: child,
       ),
@@ -335,7 +397,7 @@ class NexusHomePage extends StatelessWidget {
               color: const Color(0xFF7B61FF).withOpacity(0.4),
               blurRadius: 15,
               offset: const Offset(0, 8),
-            )
+            ),
           ],
         ),
         child: const Icon(Icons.add, color: Colors.white, size: 28),
@@ -362,14 +424,22 @@ class NoteCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.9),
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               note.title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -385,19 +455,28 @@ class NoteCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                 Text(
+                Text(
                   DateFormat.yMMMd().format(note.createdAt),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.redAccent,
+                    size: 20,
+                  ),
                   onPressed: () {
-                    Provider.of<NexusData>(context, listen: false).removeNote(note.id);
+                    Provider.of<NexusData>(
+                      context,
+                      listen: false,
+                    ).removeNote(note.id);
                   },
                   splashRadius: 20,
-                )
+                ),
               ],
-            )
+            ),
           ],
         ),
       ),
