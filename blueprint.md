@@ -1,4 +1,4 @@
-# Nexus App Blueprint (Versión 2.0)
+# Nexus App Blueprint (Versión 2.1)
 
 ## Descripción General
 
@@ -8,7 +8,7 @@ Nexus es una aplicación de toma de notas moderna y elegante, diseñada con Flut
 
 *   **Gestión de Estado:** La aplicación utiliza el paquete `provider` para una gestión de estado centralizada y reactiva. La clase `NexusData` actúa como un `ChangeNotifier`, gestionando toda la lógica de negocio y el estado de las notas.
 *   **Persistencia de Datos:** Todas las notas se guardan localmente en el dispositivo utilizando el paquete `shared_preferences`. Los datos se codifican en formato JSON, asegurando que las notas del usuario persistan entre sesiones de la aplicación. La carga y el guardado son automáticos.
-*   **Modelo de Datos:** El núcleo de los datos es la clase `Note`, que contiene un `id` único (generado por `uuid`), un `title`, un `content` y una `createdAt` para el seguimiento.
+*   **Modelo de Datos:** El núcleo de los datos es la clase `Note`, que contiene un `id` único (generado por `uuid`), un `title`, un `content`, una `createdAt` para el seguimiento y un `imagePath` opcional para la imagen adjunta.
 
 ## Funcionalidades Implementadas
 
@@ -22,8 +22,8 @@ Nexus es una aplicación de toma de notas moderna y elegante, diseñada con Flut
     *   Un **Botón de Acción Flotante (FAB)** en la esquina inferior derecha para crear notas, diseñado con un gradiente personalizado y una sombra para un efecto visual destacado.
     *   Las notas se muestran en una `GridView` de dos columnas.
     *   Un estado vacío (empty state) bien diseñado guía al usuario cuando no hay notas o cuando una búsqueda no arroja resultados.
-*   **Tarjetas de Nota (`NoteCard`):** Cada nota se muestra en una tarjeta con esquinas redondeadas, una sombra sutil para dar profundidad, y un fondo blanco semitransparente. Muestra el título, un extracto del contenido y la fecha de creación.
-*   **Pantalla de Edición de Notas:** Una interfaz de escritura sin distracciones, con campos de texto sin bordes. La `AppBar` de esta pantalla contiene un botón de "atrás" y botones de acción con gradientes.
+*   **Tarjetas de Nota (`NoteCard`):** Cada nota se muestra en una tarjeta con esquinas redondeadas, una sombra sutil para dar profundidad, y un fondo blanco semitransparente. Muestra la imagen adjunta (si existe), el título, un extracto del contenido y la fecha de creación.
+*   **Pantalla de Edición de Notas:** Una interfaz de escritura sin distracciones, con campos de texto sin bordes. La `AppBar` de esta pantalla contiene un botón de "atrás" y botones de acción con gradientes para guardar, compartir y **añadir una imagen**.
 
 ### Funcionalidad
 
@@ -32,6 +32,20 @@ Nexus es una aplicación de toma de notas moderna y elegante, diseñada con Flut
     *   **Leer:** Las notas se muestran en la pantalla principal en orden cronológico inverso.
     *   **Actualizar:** Al tocar una tarjeta de nota existente, el usuario navega a la pantalla de edición para modificarla. El guardado es automático al salir de la pantalla.
     *   **Eliminar:** Cada tarjeta de nota tiene un icono de papelera que permite eliminar la nota de forma inmediata.
+*   **Gestión de Imágenes:**
+    *   **Añadir Imagen:** Desde la pantalla de edición, los usuarios pueden tocar un nuevo botón de ícono de imagen para seleccionar una imagen de la galería de su dispositivo.
+    *   **Visualización:** La imagen seleccionada se muestra en la parte superior de la pantalla de edición y en la `NoteCard` correspondiente en la pantalla principal.
+    *   **Persistencia:** La ruta del archivo de la imagen se guarda en el modelo de la `Note` y persiste junto con el resto del contenido de la nota.
 *   **Navegación Fluida:** La navegación entre la pantalla principal y la de edición se gestiona con `Navigator`.
 *   **Búsqueda en Tiempo Real:** La barra de búsqueda permite a los usuarios filtrar sus notas por título o contenido. La lista se actualiza instantáneamente.
 *   **Formato de Fecha:** Las fechas de creación se formatean de manera legible utilizando el paquete `intl`.
+
+## Dependencias Clave
+
+*   `flutter`
+*   `provider`: Para la gestión del estado.
+*   `google_fonts`: Para la tipografía personalizada.
+*   `uuid`: Para generar IDs únicos.
+*   `shared_preferences`: Para la persistencia de datos.
+*   `intl`: Para el formato de fechas.
+*   `image_picker`: Para seleccionar imágenes de la galería del dispositivo.
