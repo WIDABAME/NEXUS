@@ -1,9 +1,12 @@
-import 'dart:convert';
-import 'dart:io';
+
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:myapp/firebase_api.dart';
+import 'package:myapp/firebase_options.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import 'note_editor_page.dart';
@@ -11,7 +14,7 @@ import 'graph_view_page.dart';
 
 const Uuid uuid = Uuid();
 
-// --- 1. MODELO DE DATOS ---
+// --- 1. DATA MODELS (Adjusted for Firestore) ---
 
 class Connection {
   final String noteId;
@@ -34,7 +37,7 @@ class Note {
   final String id;
   String title;
   String content;
-  final DateTime createdAt;
+  final Timestamp createdAt;
   String? imagePath;
   List<Connection> connections;
 
@@ -51,7 +54,7 @@ class Note {
         'id': id,
         'title': title,
         'content': content,
-        'createdAt': createdAt.toIso8601String(),
+        'createdAt': createdAt,
         'imagePath': imagePath,
         'connections': connections.map((c) => c.toJson()).toList(),
       };
@@ -60,7 +63,7 @@ class Note {
         id: json['id'],
         title: json['title'],
         content: json['content'],
-        createdAt: DateTime.parse(json['createdAt']),
+        createdAt: json['createdAt'] as Timestamp, // Firestore uses Timestamp
         imagePath: json['imagePath'],
         connections: (json['connections'] as List<dynamic>?)
                 ?.map((c) => Connection.fromJson(c))
@@ -69,11 +72,14 @@ class Note {
       );
 }
 
-// --- 2. GESTOR DE ESTADO ---
+// --- 2. STATE MANAGEMENT (Rewritten for Firestore) ---
 
 enum LoadingStatus { loading, ready, error }
 
 class NexusData extends ChangeNotifier {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  StreamSubscription<QuerySnapshot>? _notesSubscription;
+
   List<Note> _notes = [];
   String _searchQuery = '';
   LoadingStatus _status = LoadingStatus.loading;
@@ -87,7 +93,7 @@ class NexusData extends ChangeNotifier {
   };
 
   NexusData() {
-    loadNotes();
+    listenToNotes();
   }
 
   List<Note> get notes => List.unmodifiable(_notes);
@@ -107,60 +113,36 @@ class NexusData extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadNotes() async {
+  void listenToNotes() {
     _status = LoadingStatus.loading;
     notifyListeners();
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final notesJson = prefs.getString('nexus_notes');
-      if (notesJson != null) {
-        final decodedList = jsonDecode(notesJson) as List;
-        _notes = decodedList.map((json) => Note.fromJson(json)).toList();
-      } else {
-        _notes = [];
-      }
-      
-      _notes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    _notesSubscription?.cancel();
+    _notesSubscription = _db
+        .collection('notes')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .listen((snapshot) {
+      _notes = snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
       _rebuildAllConnections();
-      await _saveNotes();
-
       _status = LoadingStatus.ready;
-    } catch (e) {
+      notifyListeners();
+    }, onError: (_) {
       _status = LoadingStatus.error;
-    }
-    notifyListeners();
-  }
-
-  Future<void> _saveNotes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final encodedList = jsonEncode(_notes.map((n) => n.toJson()).toList());
-    await prefs.setString('nexus_notes', encodedList);
+      notifyListeners();
+    });
   }
 
   Future<void> addNote(Note note) async {
-    _notes.insert(0, note);
-    await _rebuildAllConnectionsAndUpdate();
+    await _db.collection('notes').doc(note.id).set(note.toJson());
   }
 
   Future<void> updateNote(Note updatedNote) async {
-    final index = _notes.indexWhere((note) => note.id == updatedNote.id);
-    if (index != -1) {
-      _notes[index] = updatedNote;
-      await _rebuildAllConnectionsAndUpdate();
-    }
+    await _db.collection('notes').doc(updatedNote.id).update(updatedNote.toJson());
   }
 
   Future<void> removeNote(String id) async {
-    _notes.removeWhere((note) => note.id == id);
-    await _rebuildAllConnectionsAndUpdate();
-  }
-
-  Future<void> _rebuildAllConnectionsAndUpdate() async {
-    _notes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    _rebuildAllConnections();
-    await _saveNotes();
-    notifyListeners();
+    await _db.collection('notes').doc(id).delete();
   }
 
   void _rebuildAllConnections() {
@@ -195,24 +177,33 @@ class NexusData extends ChangeNotifier {
         .toSet();
   }
 
-  void createAndEditNoteFromTopic(String topic, BuildContext context) {
+  void createAndEditNoteFromTopic(BuildContext context, String topic) {
     final newNote = Note(
         id: uuid.v4(),
         title: topic,
         content: 'Desarrollar la idea sobre "$topic".',
-        createdAt: DateTime.now());
+        createdAt: Timestamp.now()); // Use Firestore Timestamp
     addNote(newNote);
     Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(builder: (context) => NoteEditorPage(note: newNote)),
     );
   }
+
+  @override
+  void dispose() {
+    _notesSubscription?.cancel();
+    super.dispose();
+  }
 }
 
+// --- 3. MAIN APP & THEME ---
 
-// --- 3. APP PRINCIPAL Y TEMA ---
-
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: firebaseOptions,
+  );
+  await FirebaseApi().initNotifications();
   runApp(
     ChangeNotifierProvider(
       create: (context) => NexusData(),
@@ -231,8 +222,7 @@ class NexusApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
         scaffoldBackgroundColor: const Color(0xFFFBFBFF),
-        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)
-            .apply(bodyColor: const Color(0xFF333333)),
+        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme).apply(bodyColor: const Color(0xFF333333)),
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -247,64 +237,67 @@ class NexusApp extends StatelessWidget {
   }
 }
 
-// --- 4. PANTALLA DE INICIO ---
+// --- 4. HOME PAGE ---
 
 class NexusHomePage extends StatelessWidget {
   const NexusHomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final nexusData = Provider.of<NexusData>(context, listen: false);
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildCustomAppBar(context),
-            _buildHeader(context),
-            Expanded(
-              child: Consumer<NexusData>(
-                builder: (context, data, child) {
-                  switch (data.loadingStatus) {
-                    case LoadingStatus.loading:
-                      return const Center(child: CircularProgressIndicator());
-                    case LoadingStatus.error:
-                      return const Center(child: Text('Error al cargar las notas.'));
-                    case LoadingStatus.ready:
-                      if (data.filteredNotes.isEmpty) {
-                        return _buildEmptyState(context,
-                            isSearching: data.searchQuery.isNotEmpty);
-                      }
-                      return RefreshIndicator(
-                        onRefresh: () => nexusData.loadNotes(),
-                        child: _buildNotesGrid(context, data.filteredNotes),
-                      );
-                  }
-                },
-              ),
+    return Consumer<NexusData>(
+      builder: (context, data, child) {
+        return Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                _buildCustomAppBar(context, data),
+                _buildHeader(context, data),
+                Expanded(
+                  child: _buildBody(context, data),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-      floatingActionButton: _buildGradientFab(context),
+          ),
+          floatingActionButton: _buildGradientFab(context, data),
+        );
+      },
     );
   }
 
-  void _navigateToEditor(BuildContext context, {Note? note}) {
-    final nexusData = Provider.of<NexusData>(context, listen: false);
+  Widget _buildBody(BuildContext context, NexusData data) {
+     switch (data.loadingStatus) {
+      case LoadingStatus.loading:
+        return const Center(child: CircularProgressIndicator());
+      case LoadingStatus.error:
+        return const Center(child: Text('Error al cargar las notas.'));
+      case LoadingStatus.ready:
+        if (data.filteredNotes.isEmpty) {
+          return _buildEmptyState(context, isSearching: data.searchQuery.isNotEmpty);
+        }
+        return RefreshIndicator(
+          onRefresh: () async => data.listenToNotes(), // Changed to listenToNotes
+          child: _buildNotesGrid(context, data.filteredNotes, data),
+        );
+    }
+  }
+
+  void _navigateToEditor(BuildContext context, NexusData data, {Note? note}) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => NoteEditorPage(note: note)),
-    ).then((_) => nexusData.loadNotes());
+    ); // .then() is no longer needed due to real-time updates
   }
 
-  void _navigateToGraphView(BuildContext context) {
+  void _navigateToGraphView(BuildContext context, NexusData data) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const GraphViewPage()),
+      MaterialPageRoute(
+        builder: (context) => GraphViewPage(notes: data.notes),
+      ),
     );
   }
 
-  Widget _buildCustomAppBar(BuildContext context) {
+  Widget _buildCustomAppBar(BuildContext context, NexusData data) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(children: [
@@ -314,20 +307,22 @@ class NexusHomePage extends StatelessWidget {
         const Spacer(),
         IconButton(
           icon: const Icon(Icons.auto_graph),
-          onPressed: () => _navigateToGraphView(context),
+          onPressed: data.loadingStatus == LoadingStatus.ready
+              ? () => _navigateToGraphView(context, data)
+              : null,
         ),
       ]),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, NexusData data) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Tus Notas', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
         TextField(
-          onChanged: Provider.of<NexusData>(context, listen: false).updateSearchQuery,
+          onChanged: data.updateSearchQuery,
           decoration: const InputDecoration(
             hintText: 'Buscar...',
             prefixIcon: Icon(Icons.search),
@@ -357,7 +352,7 @@ class NexusHomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildNotesGrid(BuildContext context, List<Note> notes) {
+  Widget _buildNotesGrid(BuildContext context, List<Note> notes, NexusData data) {
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -369,14 +364,14 @@ class NexusHomePage extends StatelessWidget {
       itemCount: notes.length,
       itemBuilder: (context, index) {
         final note = notes[index];
-        return NoteCard(note: note, onTap: () => _navigateToEditor(context, note: note));
+        return NoteCard(note: note, data: data, onTap: () => _navigateToEditor(context, data, note: note));
       },
     );
   }
 
-  Widget _buildGradientFab(BuildContext context) {
+  Widget _buildGradientFab(BuildContext context, NexusData data) {
     return FloatingActionButton(
-      onPressed: () => _navigateToEditor(context),
+      onPressed: () => _navigateToEditor(context, data),
       child: const Icon(Icons.add),
     );
   }
@@ -384,13 +379,13 @@ class NexusHomePage extends StatelessWidget {
 
 class NoteCard extends StatelessWidget {
   final Note note;
+  final NexusData data;
   final VoidCallback onTap;
 
-  const NoteCard({super.key, required this.note, required this.onTap});
+  const NoteCard({super.key, required this.note, required this.data, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final nexusData = Provider.of<NexusData>(context, listen: false);
     return GestureDetector(
       onTap: onTap,
       onLongPress: () {
@@ -404,7 +399,7 @@ class NoteCard extends StatelessWidget {
               TextButton(
                 onPressed: () {
                   Navigator.of(ctx).pop();
-                  nexusData.removeNote(note.id);
+                  data.removeNote(note.id);
                 },
                 child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
               ),
@@ -426,7 +421,8 @@ class NoteCard extends StatelessWidget {
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.bottomRight,
-              child: Text(DateFormat.yMMMd().format(note.createdAt), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+              // Use toDate() to convert Timestamp to DateTime for formatting
+              child: Text(DateFormat.yMMMd().format(note.createdAt.toDate()), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
             ),
           ]),
         ),
