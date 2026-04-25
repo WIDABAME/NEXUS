@@ -118,13 +118,13 @@ class _GraphViewPageState extends State<GraphViewPage> {
     );
   }
 
-  void _navigateToNote(BuildContext parentContext, Note note) {
-    final nexusData = Provider.of<NexusData>(context, listen: false);
-    Navigator.of(parentContext).pop();
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (context) => NoteEditorPage(note: note)))
-        .then((_) => nexusData.loadNotes());
-  }
+    void _navigateToNote(BuildContext parentContext, Note note) {
+      Navigator.of(parentContext).pop();
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => NoteEditorPage(note: note)),
+      );
+    }
+
 
   @override
   Widget build(BuildContext context) {

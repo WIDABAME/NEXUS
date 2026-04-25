@@ -4,17 +4,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:myapp/firebase_api.dart';
+import 'package:myapp/database_helper.dart';
 import 'package:myapp/firebase_options.dart';
+import 'package:myapp/notification_service.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'note_editor_page.dart';
 import 'graph_view_page.dart';
 
 const Uuid uuid = Uuid();
 
-// --- 1. DATA MODELS (Adjusted for Firestore) ---
+// --- Configuration ---
+const bool USE_EMULATOR = true;
+const String EMULATOR_HOST = '192.168.80.63';
+
+// --- 1. DATA MODELS ---
 
 class Connection {
   final String noteId;
@@ -49,51 +55,22 @@ class Note {
     this.imagePath,
     List<Connection>? connections,
   }) : connections = connections ?? [];
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'content': content,
-        'createdAt': createdAt,
-        'imagePath': imagePath,
-        'connections': connections.map((c) => c.toJson()).toList(),
-      };
-
-  factory Note.fromJson(Map<String, dynamic> json) => Note(
-        id: json['id'],
-        title: json['title'],
-        content: json['content'],
-        createdAt: json['createdAt'] as Timestamp, // Firestore uses Timestamp
-        imagePath: json['imagePath'],
-        connections: (json['connections'] as List<dynamic>?)
-                ?.map((c) => Connection.fromJson(c))
-                .toList() ??
-            [],
-      );
 }
 
-// --- 2. STATE MANAGEMENT (Rewritten for Firestore) ---
+// --- 2. STATE MANAGEMENT (Using local DB and remote functions) ---
 
 enum LoadingStatus { loading, ready, error }
 
 class NexusData extends ChangeNotifier {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  StreamSubscription<QuerySnapshot>? _notesSubscription;
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   List<Note> _notes = [];
   String _searchQuery = '';
   LoadingStatus _status = LoadingStatus.loading;
 
-  final _stopWords = {
-    'a', 'al', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
-    'y', 'e', 'o', 'u', 'de', 'del', 'en', 'con', 'por', 'para', 'sin',
-    'sobre', 'tras', 'que', 'como', 'cuando', 'donde', 'quien', 'cual',
-    'mi', 'tu', 'su', 'nuestro', 'vuestro', 'mis', 'tus', 'sus',
-    'es', 'soy', 'eres', 'somos', 'son'
-  };
-
   NexusData() {
-    listenToNotes();
+    loadNotes();
   }
 
   List<Note> get notes => List.unmodifiable(_notes);
@@ -113,68 +90,104 @@ class NexusData extends ChangeNotifier {
     notifyListeners();
   }
 
-  void listenToNotes() {
-    _status = LoadingStatus.loading;
-    notifyListeners();
-
-    _notesSubscription?.cancel();
-    _notesSubscription = _db
-        .collection('notes')
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .listen((snapshot) {
-      _notes = snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
-      _rebuildAllConnections();
+  Future<void> loadNotes() async {
+    try {
+      _status = LoadingStatus.loading;
+      notifyListeners();
+      _notes = await _dbHelper.getNotes();
+      await _rebuildAllConnections();
       _status = LoadingStatus.ready;
-      notifyListeners();
-    }, onError: (_) {
+    } catch (e) {
+      print("Error loading notes: $e");
       _status = LoadingStatus.error;
-      notifyListeners();
-    });
+    }
+    notifyListeners();
   }
 
   Future<void> addNote(Note note) async {
-    await _db.collection('notes').doc(note.id).set(note.toJson());
+    await _dbHelper.addNote(note);
+    NotificationService().showNotification(
+      'Nueva Nota Creada',
+      'Se ha añadido la nota: "${note.title}"',
+    );
+    await loadNotes();
+    await _rebuildAllConnections(); // Recalculate connections
+    notifyListeners();
   }
 
   Future<void> updateNote(Note updatedNote) async {
-    await _db.collection('notes').doc(updatedNote.id).update(updatedNote.toJson());
+    await _dbHelper.updateNote(updatedNote);
+     NotificationService().showNotification(
+      'Nota Actualizada',
+      'Se ha modificado la nota: "${updatedNote.title}"',
+    );
+    await loadNotes();
+    await _rebuildAllConnections(); // Recalculate connections
+    notifyListeners();
   }
 
   Future<void> removeNote(String id) async {
-    await _db.collection('notes').doc(id).delete();
+    await _dbHelper.removeNote(id);
+    NotificationService().showNotification(
+      'Nota Eliminada',
+      'Una nota ha sido eliminada.', // Generic message
+    );
+    await loadNotes();
+    await _rebuildAllConnections(); // Recalculate connections
+    notifyListeners();
   }
 
-  void _rebuildAllConnections() {
-    for (final note in _notes) {
-      note.connections.clear();
-    }
+  Future<void> addManualConnection(Note fromNote, Note toNote) async {
+    // Avoid duplicate connections
+    if (fromNote.connections.any((c) => c.noteId == toNote.id)) return;
 
-    for (int i = 0; i < _notes.length; i++) {
-      for (int j = i + 1; j < _notes.length; j++) {
-        final noteA = _notes[i];
-        final noteB = _notes[j];
+    // Create connections
+    final fromConnection = Connection(noteId: toNote.id, topic: 'manual');
+    final toConnection = Connection(noteId: fromNote.id, topic: 'manual');
 
-        final keywordsA = _extractKeywords(noteA.title);
-        final keywordsB = _extractKeywords(noteB.title);
-        final commonKeywords = keywordsA.intersection(keywordsB);
+    fromNote.connections.add(fromConnection);
+    toNote.connections.add(toConnection);
 
-        if (commonKeywords.isNotEmpty) {
-          final topic = commonKeywords.join(', ');
-          noteA.connections.add(Connection(noteId: noteB.id, topic: topic));
-          noteB.connections.add(Connection(noteId: noteA.id, topic: topic));
+    // Persist changes
+    await _dbHelper.updateNote(fromNote);
+    await _dbHelper.updateNote(toNote);
+
+    notifyListeners();
+  }
+
+  Future<void> _rebuildAllConnections() async {
+    if (_notes.isEmpty) return;
+
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('rebuildConnections');
+      final notesData = _notes.map((n) => {'id': n.id, 'title': n.title}).toList();
+
+      final result = await callable.call<Map<String, dynamic>>({
+        'notes': notesData,
+      });
+
+      final allConnections = result.data['connections'] as Map<String, dynamic>;
+
+      for (final note in _notes) {
+        // Preserve manual connections
+        final manualConnections = note.connections.where((c) => c.topic == 'manual').toList();
+        note.connections.clear();
+        note.connections.addAll(manualConnections);
+
+        if (allConnections.containsKey(note.id)) {
+          final connectionsForNote = allConnections[note.id] as List<dynamic>;
+          final automaticConnections = connectionsForNote
+              .map((c) => Connection.fromJson(c as Map<String, dynamic>))
+              .where((c) => !note.connections.any((manual) => manual.noteId == c.noteId)); // Avoid duplicates
+          note.connections.addAll(automaticConnections);
         }
+        await _dbHelper.updateNote(note); // Persist connections to local DB
       }
+    } on FirebaseFunctionsException catch (e) {
+      print('Functions Error: ${e.code} - ${e.message}');
+    } catch (e) {
+      print('Generic Error calling function: $e');
     }
-  }
-
-  Set<String> _extractKeywords(String text) {
-    if (text.isEmpty) return {};
-    final sanitizedText = text.toLowerCase().replaceAll(RegExp(r'[¿?¡!.,;:]'), '');
-    return sanitizedText
-        .split(' ')
-        .where((word) => word.length > 2 && !_stopWords.contains(word))
-        .toSet();
   }
 
   void createAndEditNoteFromTopic(BuildContext context, String topic) {
@@ -182,7 +195,7 @@ class NexusData extends ChangeNotifier {
         id: uuid.v4(),
         title: topic,
         content: 'Desarrollar la idea sobre "$topic".',
-        createdAt: Timestamp.now()); // Use Firestore Timestamp
+        createdAt: Timestamp.now());
     addNote(newNote);
     Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(builder: (context) => NoteEditorPage(note: newNote)),
@@ -191,19 +204,29 @@ class NexusData extends ChangeNotifier {
 
   @override
   void dispose() {
-    _notesSubscription?.cancel();
     super.dispose();
   }
 }
 
 // --- 3. MAIN APP & THEME ---
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: firebaseOptions,
   );
-  await FirebaseApi().initNotifications();
+
+  if (USE_EMULATOR) {
+    try {
+      FirebaseFunctions.instance.useFunctionsEmulator(EMULATOR_HOST, 5001);
+      print("Functions emulator connected");
+    } catch (e) {
+      print("Error connecting to functions emulator: $e");
+    }
+  }
+
+  await NotificationService().init();
+
   runApp(
     ChangeNotifierProvider(
       create: (context) => NexusData(),
@@ -226,7 +249,7 @@ class NexusApp extends StatelessWidget {
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          iconTheme: IconThemeData(color: Color(0xFF333333)),
+          iconTheme: IconThemeData(color: const Color(0xFF333333)),
           titleTextStyle: TextStyle(
               color: Color(0xFF333333), fontSize: 20, fontWeight: FontWeight.bold),
         ),
@@ -275,7 +298,7 @@ class NexusHomePage extends StatelessWidget {
           return _buildEmptyState(context, isSearching: data.searchQuery.isNotEmpty);
         }
         return RefreshIndicator(
-          onRefresh: () async => data.listenToNotes(), // Changed to listenToNotes
+          onRefresh: () async => data.loadNotes(),
           child: _buildNotesGrid(context, data.filteredNotes, data),
         );
     }
@@ -285,7 +308,7 @@ class NexusHomePage extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => NoteEditorPage(note: note)),
-    ); // .then() is no longer needed due to real-time updates
+    );
   }
 
   void _navigateToGraphView(BuildContext context, NexusData data) {
@@ -419,10 +442,19 @@ class NoteCard extends StatelessWidget {
               child: Text(note.content, style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.fade),
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.bottomRight,
-              // Use toDate() to convert Timestamp to DateTime for formatting
-              child: Text(DateFormat.yMMMd().format(note.createdAt.toDate()), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (note.connections.isNotEmpty)
+                  Chip(
+                    avatar: const Icon(Icons.link, size: 14),
+                    label: Text(note.connections.length.toString(), style: const TextStyle(fontSize: 12)),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(0),
+                  ),
+                const Spacer(), // Pushes the date to the right
+                Text(DateFormat.yMMMd().format(note.createdAt.toDate()), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+              ],
             ),
           ]),
         ),

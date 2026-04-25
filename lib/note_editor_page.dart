@@ -187,6 +187,121 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
   }
 
+  Future<void> _showNoteSelectionDialog(BuildContext context) async {
+    final nexusData = Provider.of<NexusData>(context, listen: false);
+    final currentNoteId = widget.note?.id;
+
+    // Filter out the current note and already connected notes
+    final connectedNoteIds = widget.note?.connections.map((c) => c.noteId).toSet() ?? {};
+    final List<Note> availableNotes = nexusData.notes
+        .where((n) => n.id != currentNoteId && !connectedNoteIds.contains(n.id))
+        .toList();
+
+    if (availableNotes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay otras notas disponibles para conectar.')),
+      );
+      return;
+    }
+
+    final Note? selectedNote = await showDialog<Note>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Conectar con...'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              itemCount: availableNotes.length,
+              itemBuilder: (context, index) {
+                final note = availableNotes[index];
+                return ListTile(
+                  title: Text(note.title),
+                  onTap: () {
+                    Navigator.of(context).pop(note);
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedNote != null && widget.note != null) {
+      await nexusData.addManualConnection(widget.note!, selectedNote);
+      // The NexusData provider will notify listeners, and the UI will update.
+    }
+  }
+
+  Widget _buildConnectionsSection(BuildContext context) {
+    // Use Consumer to get the latest data and rebuild when it changes
+    return Consumer<NexusData>(builder: (context, nexusData, child) {
+      // Find the latest version of the note from the provider
+      final currentNote = nexusData.notes.firstWhere((n) => n.id == widget.note?.id, orElse: () => widget.note!); 
+      final connections = currentNote?.connections ?? [];
+
+      Note? findNoteById(String id) {
+        try {
+          return nexusData.notes.firstWhere((note) => note.id == id);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Conexiones',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              if (!_isNewNote)
+                IconButton(
+                  icon: const Icon(Icons.add_link),
+                  onPressed: () => _showNoteSelectionDialog(context),
+                ),
+            ],
+          ),
+          if (connections.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8.0),
+              child: Text('No hay conexiones aún.', style: TextStyle(color: Colors.grey)),
+            )
+          else
+            const SizedBox(height: 8),
+          Wrap(
+            spacing: 8.0,
+            runSpacing: 4.0,
+            children: connections.map((connection) {
+              final connectedNote = findNoteById(connection.noteId);
+              if (connectedNote == null) {
+                return const SizedBox.shrink();
+              }
+              return ActionChip(
+                avatar: Icon(connection.topic == 'manual' ? Icons.handyman : Icons.auto_awesome, size: 16),
+                label: Text(connectedNote.title),
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => NoteEditorPage(note: connectedNote),
+                    ),
+                  );
+                },
+              );
+            }).toList(),
+          ),
+        ],
+      );
+    });
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -219,6 +334,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
               minLines: 10,
               maxLines: null, // Allows the text field to grow
             ),
+           if (!_isNewNote) _buildConnectionsSection(context),
           ],
         ),
       ),
