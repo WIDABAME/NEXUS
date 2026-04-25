@@ -6,7 +6,8 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "mocha --require ts-node/register test/**/*.test.ts"
   },
   "engines": {
     "node": "18"
@@ -17,7 +18,12 @@
     "firebase-functions": "^4.3.1"
   },
   "devDependencies": {
-    "typescript": "^4.9.0"
+    "typescript": "^4.9.0",
+    "chai": "^4.3.10",
+    "mocha": "^10.2.0",
+    "ts-node": "^10.9.1",
+    "@types/chai": "^4.3.5",
+    "@types/mocha": "^10.0.1"
   },
   "private": true
 }
