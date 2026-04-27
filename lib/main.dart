@@ -95,7 +95,7 @@ class NexusData extends ChangeNotifier {
       _status = LoadingStatus.loading;
       notifyListeners();
       _notes = await _dbHelper.getNotes();
-      await _rebuildAllConnections();
+      // await _rebuildAllConnections();
       _status = LoadingStatus.ready;
     } catch (e) {
       print("Error loading notes: $e");
@@ -111,7 +111,7 @@ class NexusData extends ChangeNotifier {
       'Se ha añadido la nota: "${note.title}"',
     );
     await loadNotes();
-    await _rebuildAllConnections(); // Recalculate connections
+    // await _rebuildAllConnections(); // Recalculate connections
     notifyListeners();
   }
 
@@ -122,7 +122,7 @@ class NexusData extends ChangeNotifier {
       'Se ha modificado la nota: "${updatedNote.title}"',
     );
     await loadNotes();
-    await _rebuildAllConnections(); // Recalculate connections
+    // await _rebuildAllConnections(); // Recalculate connections
     notifyListeners();
   }
 
@@ -133,7 +133,7 @@ class NexusData extends ChangeNotifier {
       'Una nota ha sido eliminada.', // Generic message
     );
     await loadNotes();
-    await _rebuildAllConnections(); // Recalculate connections
+    // await _rebuildAllConnections(); // Recalculate connections
     notifyListeners();
   }
 
