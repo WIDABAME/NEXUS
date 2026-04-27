@@ -1,3 +1,4 @@
+
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,7 +16,7 @@ class GraphViewPage extends StatefulWidget {
 
 class _GraphViewPageState extends State<GraphViewPage> {
   final TransformationController _transformationController = TransformationController();
-  late final Map<String, Offset> _notePositions;
+  late Map<String, Offset> _notePositions = {};
   final double _nodeRadius = 45.0;
   final Size _canvasSize = const Size(2000, 2000);
   String? _selectedNodeId;
@@ -23,7 +24,10 @@ class _GraphViewPageState extends State<GraphViewPage> {
   @override
   void initState() {
     super.initState();
-    _notePositions = _initializePositions(widget.notes);
+    // Las posiciones se inicializan aquí y solo una vez.
+    if (widget.notes.isNotEmpty) {
+      _notePositions = _initializePositions(widget.notes);
+    }
   }
 
   Map<String, Offset> _initializePositions(List<Note> notes) {
@@ -41,7 +45,9 @@ class _GraphViewPageState extends State<GraphViewPage> {
   void _handleTap(Offset localPosition) {
     final scenePosition = _transformationController.toScene(localPosition);
     String? tappedNodeId;
-    for (final note in widget.notes) {
+
+    // Invertimos el bucle para dar prioridad a los nodos dibujados encima
+    for (final note in widget.notes.reversed) {
       final nodePosition = _notePositions[note.id];
       if (nodePosition != null &&
           (scenePosition - nodePosition).distance <= _nodeRadius) {
@@ -50,10 +56,15 @@ class _GraphViewPageState extends State<GraphViewPage> {
       }
     }
 
-    if (tappedNodeId != null) {
-      setState(() {
+    setState(() {
+      if (tappedNodeId == _selectedNodeId) {
+        _selectedNodeId = null;
+      } else {
         _selectedNodeId = tappedNodeId;
-      });
+      }
+    });
+
+    if (tappedNodeId != null) {
       final tappedNote = widget.notes.firstWhere((n) => n.id == tappedNodeId);
       _showNodeActions(tappedNote);
     }
@@ -130,9 +141,19 @@ class _GraphViewPageState extends State<GraphViewPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // Diagnostic: Display the number of notes received by the widget.
         title: Text('Grafo de Notas (${widget.notes.length} notas)'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              // Botón para forzar la reinicialización de las posiciones
+              setState(() {
+                _notePositions = _initializePositions(widget.notes);
+                _selectedNodeId = null;
+              });
+            },
+            tooltip: 'Reorganizar Grafo',
+          ),
           IconButton(
             icon: const Icon(Icons.center_focus_strong),
             onPressed: () {
@@ -144,7 +165,18 @@ class _GraphViewPageState extends State<GraphViewPage> {
           ),
         ],
       ),
-      body: GestureDetector(
+      body: widget.notes.isEmpty
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.auto_graph, size: 60, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('No hay notas para mostrar en el grafo.', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+            )
+          : GestureDetector(
         onTapUp: (details) => _handleTap(details.localPosition),
         child: InteractiveViewer(
           transformationController: _transformationController,
@@ -181,85 +213,79 @@ class GraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // -- Start Diagnostic Section --
-    const textStyle = TextStyle(color: Colors.red, fontSize: 32, fontWeight: FontWeight.bold);
-    void drawDebugText(String message, Offset offset) {
-      final textSpan = TextSpan(text: message, style: textStyle);
-      final textPainter = TextPainter(text: textSpan, textDirection: TextDirection.ltr);
-      textPainter.layout();
-      textPainter.paint(canvas, offset);
-    }
-
-    if (notes.isEmpty) {
-      drawDebugText('PAINTER DIAGNOSTIC: notes list is empty.', const Offset(50, 100));
-      return;
-    }
-
-    if (positions.isEmpty) {
-      drawDebugText('PAINTER DIAGNOSTIC: positions map is empty.', const Offset(50, 200));
-      return;
-    }
-    // -- End Diagnostic Section --
+    // Si no hay posiciones, no hay nada que dibujar.
+    if (positions.isEmpty) return;
 
     final linePaint = Paint()
-      ..color = Colors.grey.withOpacity(0.5)
-      ..strokeWidth = 1.5;
+      ..color = Colors.grey.withOpacity(0.6)
+      ..strokeWidth = 2.0;
     final selectedLinePaint = Paint()
       ..color = Colors.deepPurpleAccent
-      ..strokeWidth = 2.5;
+      ..strokeWidth = 3.0;
 
     final nodePaint = Paint()..color = Colors.deepPurple[300]!;
     final selectedNodePaint = Paint()..color = Colors.amber;
-
+    
     final Note? selectedNote = (selectedNodeId == null)
-        ? null
-        : notes.firstWhere((n) => n.id == selectedNodeId);
+      ? null
+      : notes.firstWhere((n) => n.id == selectedNodeId, orElse: () => notes.first);
 
-    final connectedIds = selectedNote?.connections.map((c) => c.noteId).toSet();
+    final connectedToSelectedIds = selectedNote?.connections.map((c) => c.noteId).toSet();
     final paintedConnections = <String>{};
 
+    // -- DIBUJAR LÍNEAS --
     for (final note in notes) {
       final startPos = positions[note.id];
       if (startPos == null) continue;
 
       for (final conn in note.connections) {
+        final endPos = positions[conn.noteId];
+        if (endPos == null) continue;
+        
         final connectionKey = [note.id, conn.noteId]..sort();
         final uniqueKey = connectionKey.join('-');
         if (paintedConnections.contains(uniqueKey)) continue;
 
-        final endPos = positions[conn.noteId];
-        if (endPos != null) {
-          final isSelected = selectedNodeId != null &&
-              (note.id == selectedNodeId || conn.noteId == selectedNodeId);
-          canvas.drawLine(
-              startPos, endPos, isSelected ? selectedLinePaint : linePaint);
-          paintedConnections.add(uniqueKey);
-        }
+        final bool isConnectionOfSelectedNode = selectedNodeId != null && 
+            (note.id == selectedNodeId || conn.noteId == selectedNodeId);
+
+        canvas.drawLine(
+          startPos,
+          endPos,
+          isConnectionOfSelectedNode ? selectedLinePaint : linePaint,
+        );
+        paintedConnections.add(uniqueKey);
       }
     }
 
+    // -- DIBUJAR NODOS Y TEXTO --
     for (final note in notes) {
       final pos = positions[note.id];
       if (pos == null) continue;
 
-      final isSelected = note.id == selectedNodeId;
-      final isConnectedToSelected = connectedIds?.contains(note.id) ?? false;
+      final bool isSelected = note.id == selectedNodeId;
+      final bool isConnectedToSelected = connectedToSelectedIds?.contains(note.id) ?? false;
 
       final Paint currentPaint;
       final double currentRadius;
+      final Color textColor;
 
       if (isSelected) {
         currentPaint = selectedNodePaint;
         currentRadius = nodeRadius * 1.15;
+        textColor = Colors.black87;
       } else if (selectedNodeId != null && isConnectedToSelected) {
         currentPaint = nodePaint;
         currentRadius = nodeRadius * 1.05;
+        textColor = Colors.white;
       } else if (selectedNodeId != null) {
-        currentPaint = Paint()..color = Colors.grey[400]!;
+        currentPaint = Paint()..color = Colors.grey[400]!.withAlpha(150);
         currentRadius = nodeRadius;
+        textColor = Colors.white70;
       } else {
         currentPaint = nodePaint;
         currentRadius = nodeRadius;
+        textColor = Colors.white;
       }
 
       canvas.drawCircle(pos, currentRadius, currentPaint);
@@ -268,7 +294,7 @@ class GraphPainter extends CustomPainter {
         text: TextSpan(
             text: note.title,
             style: TextStyle(
-              color: isSelected ? Colors.black87 : Colors.white,
+              color: textColor,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             )),
@@ -282,5 +308,9 @@ class GraphPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant GraphPainter oldDelegate) {
+    return oldDelegate.notes != notes || 
+           oldDelegate.positions != positions || 
+           oldDelegate.selectedNodeId != selectedNodeId;
+  }
 }
