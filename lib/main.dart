@@ -17,7 +17,7 @@ import 'graph_view_page.dart';
 const Uuid uuid = Uuid();
 
 // --- Configuration ---
-const bool USE_EMULATOR = true;
+const bool USE_EMULATOR = false;
 const String EMULATOR_HOST = '192.168.80.63';
 
 // --- 1. DATA MODELS ---
